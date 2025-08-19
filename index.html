@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TeaPath — Чайный путь</title>
+<style>
+  /* --- Reset & base --- */
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#e8eaed;overflow:hidden}
+
+  /* --- Scene theming --- */
+  body.scene-home{background:radial-gradient(1200px 600px at 20% 120%, #0b1018 0,#0b1018 40%,#0a0d14 60%,#070a11 100%),
+                                 repeating-linear-gradient(45deg, #0d121a 0 12px,#0b1016 12px 24px)}
+  body.scene-street{background:linear-gradient(#0f1e2c,#09121a 40%,#04070c 100%) no-repeat fixed}
+  body.scene-dry{background:linear-gradient(180deg,#17120f,#0e0b09)}
+  body.scene-grind{background:linear-gradient(180deg,#151414,#0d0c0c)}
+  body.scene-ceremony{background:radial-gradient(900px 500px at 80% -20%, #1b2d27 0,#0f1d19 45%,#0a1411 100%)}
+
+  /* Subtle particles (floating dust) */
+  .dust{position:fixed;inset:0;pointer-events:none;opacity:.12;background-image:radial-gradient(circle at 10% 20%,#fff 1px,transparent 1px),
+                                                      radial-gradient(circle at 80% 30%,#fff 1px,transparent 1px),
+                                                      radial-gradient(circle at 30% 60%,#fff 1px,transparent 1px),
+                                                      radial-gradient(circle at 60% 80%,#fff 1px,transparent 1px)}
+  .dust{animation:fmove 18s linear infinite}
+  @keyframes fmove{from{transform:translateY(0)}to{transform:translateY(-30px)}}
+
+  /* --- Layout --- */
+  .hud{position:fixed;inset:12px 12px auto 12px;display:flex;gap:10px;align-items:center;z-index:10}
+  .badge{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);
+         padding:8px 12px;border-radius:12px;display:flex;gap:8px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+  .badge b{font-weight:700}
+  .muted{opacity:.75}
+
+  .title{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:10;
+         background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);
+         padding:8px 14px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+
+  .scene{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{width:min(980px,100%);min-height:520px;max-height:86vh;display:grid;grid-template-rows:auto 1fr auto;
+        background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:20px;overflow:hidden;
+        box-shadow:0 20px 60px rgba(0,0,0,.35)}
+
+  .card-header,.card-footer{padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+  .card-header{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+  .card-footer{background:linear-gradient(0deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+
+  .viewport{position:relative;overflow:hidden}
+
+  /* --- Decorative backgrounds per scene --- */
+  .bg{position:absolute;inset:0;pointer-events:none;opacity:.25}
+  .bg.tatami{background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 28px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 2px, transparent 2px 28px)}
+  .bg.street{background:linear-gradient(180deg,transparent 0 60%,rgba(0,0,0,.35) 60% 100%),
+             radial-gradient(800px 400px at 50% -10%,rgba(255,255,255,.35),transparent 60%)}
+  .bg.wood{background:repeating-linear-gradient(90deg,#201a14 0 22px,#231d16 22px 44px,#1c1712 44px 66px)}
+  .bg.tea{background:radial-gradient(600px 320px at 50% 20%,rgba(87,168,125,.25),transparent 60%)}
+
+  /* --- Content layout inside viewport --- */
+  .content{position:relative;display:grid;grid-template-columns:1fr 320px;gap:14px;padding:14px}
+  .panel{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:12px;overflow:auto}
+  .panel h3{margin:4px 0 8px 0;font-size:16px}
+
+  /* --- Buttons --- */
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#e8eaed;
+       padding:10px 12px;border-radius:12px;cursor:pointer;transition:transform .05s ease,background .2s}
+  .btn:hover{background:rgba(255,255,255,.14)}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:#3aa37b;border-color:#45c08f}
+  .btn.warn{background:#9c3a3a;border-color:#b44f4f}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* --- Grid of trees --- */
+  .trees{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .tree{position:relative;background:rgba(40,60,45,.6);border:1px solid rgba(90,140,110,.5);border-radius:14px;padding:10px;min-height:120px}
+  .tree .icon{font-size:38px;filter:drop-shadow(0 6px 12px rgba(0,0,0,.4))}
+  .cooldown{height:8px;background:rgba(255,255,255,.1);border-radius:999px;overflow:hidden;margin-top:8px}
+  .cooldown .fill{height:100%;background:#59c48f;width:0%}
+  .tree .meta{font-size:12px;opacity:.8;margin-top:6px}
+
+  /* --- Progress list --- */
+  .list{display:flex;flex-direction:column;gap:8px}
+  .job{display:grid;grid-template-columns:1fr 80px;gap:10px;align-items:center;padding:8px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)}
+  .bar{height:8px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
+  .bar .f{height:100%;background:#4aa3ff;width:0%}
+
+  /* --- Ceremony visual --- */
+  .ceremony-stage{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .teatable{background:rgba(60,45,35,.5);border:1px solid rgba(120,95,75,.6);border-radius:14px;padding:14px;min-height:180px;position:relative}
+  .pot{font-size:46px;filter:drop-shadow(0 6px 12px rgba(0,0,0,.45))}
+  .steam{position:absolute;left:60px;top:24px;font-size:18px;opacity:0;animation:steam 2s ease-in-out infinite}
+  @keyframes steam{0%{transform:translateY(6px);opacity:0}50%{opacity:.9}100%{transform:translateY(-12px);opacity:0}}
+
+  /* --- Nav arrows overlay --- */
+  .nav{position:fixed;inset:auto 12px 12px 12px;display:flex;gap:8px;justify-content:space-between;align-items:center;z-index:12}
+  .arrow{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:20px}
+
+  /* --- Small helpers --- */
+  .kv{display:flex;gap:8px;align-items:center}
+  .kv .k{opacity:.75}
+  .pill{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14)}
+
+  /* Scrollbars */
+  .panel::-webkit-scrollbar{height:10px;width:10px}
+  .panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
+</style>
+</head>
+<body class="scene-home">
+  <div class="dust"></div>
+  <div class="title">TeaPath · Чайный путь</div>
+
+  <!-- HUD -->
+  <div class="hud">
+    <div class="badge"><span>🍃 Листьев:</span><b id="inv-leaf">0</b></div>
+    <div class="badge"><span>🌿 Сушёных:</span><b id="inv-dry">0</b></div>
+    <div class="badge"><span>🫖 Дроблёных:</span><b id="inv-crush">0</b></div>
+    <div class="badge"><span>🍵 Чашек:</span><b id="inv-cups">0</b></div>
+    <div class="badge muted"><span>🕊️ Гармония:</span><b id="inv-harmony">0</b></div>
+    <button class="btn ghost" id="btn-help">❔ Помощь</button>
+    <button class="btn ghost" id="btn-reset">↺ Сброс</button>
+  </div>
+
+  <!-- MAIN CARD -->
+  <div class="scene">
+    <div class="card">
+      <div class="card-header">
+        <div id="scene-name">Дом · чайная комната</div>
+        <div class="pill" id="hint">Нажми ▶ или стрелку вправо</div>
+      </div>
+
+      <div class="viewport">
+        <div class="bg tatami" id="bg-tatami" hidden></div>
+        <div class="bg street" id="bg-street" hidden></div>
+        <div class="bg wood" id="bg-wood" hidden></div>
+        <div class="bg tea" id="bg-tea" hidden></div>
+
+        <div class="content" id="content"><!-- filled dynamically --></div>
+      </div>
+
+      <div class="card-footer">
+        <div class="kv"><div class="k">Локации:</div><div class="pill">Дом</div><div class="pill">Улица</div><div class="pill">Сушка</div><div class="pill">Дробилка</div><div class="pill">Церемония</div></div>
+        <div class="kv muted">Управление: ◀ ▶ (клавиатура) или кнопки снизу</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav arrows -->
+  <div class="nav">
+    <button class="btn arrow" id="nav-left">◀</button>
+    <button class="btn arrow" id="nav-right">▶</button>
+  </div>
+
+<script>
+(function(){
+  /* =====================
+     Core state & helpers
+  ======================*/
+  const scenes = ['home','street','dry','grind','ceremony'];
+  let sceneIndex = 0;
+  const now = ()=>Date.now();
+
+  const SAVE_KEY = 'teapath.save.v1';
+  const def = {
+    inv:{leaf:0, dry:0, crush:0, cups:0, harmony:0},
+    // 3 деревца с отдельным кулдауном
+    trees:[{readyAt:0},{readyAt:0},{readyAt:0}],
+    dryJobs:[], // {id, amount, finishAt}
+    grindJobs:[], // {id, amount, finishAt}
+    brewJobs:[], // {id, style, finishAt}
+    counters:{harvested:0, fed:0}
+  };
+  let S = load();
+
+  function load(){
+    try{ const raw = localStorage.getItem(SAVE_KEY); if(!raw) return structuredClone(def); const obj = JSON.parse(raw); return {...structuredClone(def), ...obj}; }
+    catch{ return structuredClone(def); }
+  }
+  function save(){ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
+
+  function fmtTime(ms){ if(ms<=0) return 'готово'; const s=Math.ceil(ms/1000); const m=Math.floor(s/60), r=s%60; return (m?m+'м ':'')+r+'с'; }
+
+  /* =====================
+     Rendering root
+  ======================*/
+  const content = document.getElementById('content');
+  const sceneName = document.getElementById('scene-name');
+  const hint = document.getElementById('hint');
+
+  function setScene(i){
+    sceneIndex = (i+scenes.length)%scenes.length;
+    document.body.className = 'scene-'+scenes[sceneIndex];
+    // toggle BG overlays
+    document.getElementById('bg-tatami').hidden = scenes[sceneIndex]!=='home' && scenes[sceneIndex]!=='ceremony';
+    document.getElementById('bg-street').hidden = scenes[sceneIndex]!=='street';
+    document.getElementById('bg-wood').hidden = scenes[sceneIndex]!=='grind' && scenes[sceneIndex]!=='dry';
+    document.getElementById('bg-tea').hidden = scenes[sceneIndex]!=='ceremony';
+    render();
+  }
+
+  function render(){
+    // HUD
+    invLeaf.textContent = S.inv.leaf;
+    invDry.textContent = S.inv.dry;
+    invCrush.textContent = S.inv.crush;
+    invCups.textContent = S.inv.cups;
+    invHarmony.textContent = S.inv.harmony;
+
+    const sc = scenes[sceneIndex];
+    if(sc==='home') renderHome();
+    if(sc==='street') renderStreet();
+    if(sc==='dry') renderDry();
+    if(sc==='grind') renderGrind();
+    if(sc==='ceremony') renderCeremony();
+  }
+
+  /* =====================
+     Scene: Home
+  ======================*/
+  function renderHome(){
+    sceneName.textContent = 'Дом · чайная комната';
+    hint.textContent = 'Вправо → к улице с чайными деревьями';
+    content.innerHTML = `
+      <div class="panel" style="grid-column:1/3;min-height:360px;display:grid;place-items:center">
+        <div style="text-align:center">
+          <div style="font-size:56px;margin-bottom:8px">🏯</div>
+          <div class="muted" style="max-width:560px;margin:0 auto">
+            Добро пожаловать! Это твой небольшой чайный дом. Отсюда начинается путь: собери листья на улице, высуши их, раздроби — и проведи чайную церемонию.
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn primary" id="go-street">Вперёд к деревьям ▶</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('go-street').onclick=()=>setScene(sceneIndex+1);
+  }
+
+  /* =====================
+     Scene: Street (Harvest)
+  ======================*/
+  function renderStreet(){
+    sceneName.textContent = 'Улица · чайные деревья';
+    hint.textContent = 'Нажимай на деревья, чтобы собирать листья';
+    const treesHTML = S.trees.map((t,i)=>{
+      const cd = Math.max(0, t.readyAt - now());
+      const pct = 100 - Math.min(100, Math.floor(cd/15000*100)); // 15 сек кулдаун
+      return `
+        <div class="tree" data-i="${i}">
+          <div class="icon">🌳</div>
+          <div class="meta">Дерево #${i+1}</div>
+          <div class="cooldown"><div class="fill" style="width:${pct}%"></div></div>
+          <div class="meta">${cd>0?('через '+fmtTime(cd)):'готово к сбору'}</div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button class="btn harvest" ${cd>0?'disabled':''}>Собрать 🍃</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="panel">
+        <h3>Сбор листьев</h3>
+        <div class="trees">${treesHTML}</div>
+      </div>
+      <div class="panel">
+        <h3>Подсказки</h3>
+        <div class="list">
+          <div>• У каждого дерева 15 сек перезарядки.</div>
+          <div>• За сбор ты получаешь 2–4 свежих листа.</div>
+          <div>• Когда наберёшь листья — иди вправо к сушке.</div>
+          <div class="muted">Навигация: ◀ ▶</div>
+        </div>
+      </div>`;
+
+    content.querySelectorAll('.tree').forEach(card=>{
+      const i = Number(card.dataset.i);
+      card.querySelector('.harvest').onclick = ()=> harvest(i);
+    });
+  }
+  function harvest(i){
+    const t = S.trees[i];
+    const cd = Math.max(0, t.readyAt - now());
+    if(cd>0) return; // not ready
+    const got = 2 + Math.floor(Math.random()*3); // 2..4
+    S.inv.leaf += got;
+    t.readyAt = now() + 15000; // 15s
+    S.counters.harvested++;
+    save();
+    render();
+  }
+
+  /* =====================
+     Scene: Dry (Drying racks)
+  ======================*/
+  const DRY_COST = 5; // свежих листьев за партию
+  const DRY_TIME = 12000; // 12 сек
+  const DRY_YIELD = 3; // сушёных
+
+  function renderDry(){
+    sceneName.textContent = 'Сушка листьев';
+    hint.textContent = 'Обменивай свежие листья на сушёные (5→3)';
+
+    const jobs = S.dryJobs.map(job=>{
+      const left = Math.max(0, job.finishAt - now());
+      const pct = 100 - Math.min(100, Math.floor(left/DRY_TIME*100));
+      return `<div class="job"><div>
+                <div>Партия: ${job.amount} 🍃 → ${job.amount/DRY_COST*DRY_YIELD} 🌿</div>
+                <div class="bar"><div class="f" style="width:${pct}%"></div></div>
+                <div class="muted">${fmtTime(left)}</div>
+              </div>
+              <div style="text-align:right">${left<=0?'<button class="btn primary take" data-id="'+job.id+'">Забрать</button>':'…'}</div></div>`;
+    }).join('') || '<div class="muted">Очередь пустая</div>';
+
+    content.innerHTML = `
+      <div class="panel">
+        <h3>Запуск сушки</h3>
+        <div class="kv" style="flex-wrap:wrap;gap:10px">
+          <div class="pill">Стоимость: <b>${DRY_COST}</b> 🍃 → <b>${DRY_YIELD}</b> 🌿</div>
+          <div class="pill">Время: <b>${Math.round(DRY_TIME/1000)}с</b></div>
+          <button class="btn primary" id="start-dry" ${S.inv.leaf<DRY_COST?'disabled':''}>Запустить партию</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Очередь</h3>
+        <div class="list" id="dry-list">${jobs}</div>
+      </div>`;
+
+    document.getElementById('start-dry').onclick = ()=>{
+      if(S.inv.leaf<DRY_COST) return;
+      S.inv.leaf -= DRY_COST;
+      S.dryJobs.push({ id: 'd'+Math.random().toString(36).slice(2,8), amount: DRY_COST, finishAt: now()+DRY_TIME });
+      save();
+      render();
+    };
+
+    content.querySelectorAll('.take').forEach(b=>{
+      b.onclick = ()=>{
+        const id = b.dataset.id;
+        const idx = S.dryJobs.findIndex(j=>j.id===id);
+        if(idx>=0 && S.dryJobs[idx].finishAt<=now()){
+          const batches = S.dryJobs[idx].amount/DRY_COST;
+          S.inv.dry += batches*DRY_YIELD;
+          S.dryJobs.splice(idx,1);
+          save();
+          render();
+        }
+      };
+    });
+  }
+
+  /* =====================
+     Scene: Grind (Crushing)
+  ======================*/
+  const GRIND_COST = 3; // сушёных за партию
+  const GRIND_TIME = 8000; // 8 сек
+  const GRIND_YIELD = 2; // дроблёных
+
+  function renderGrind(){
+    sceneName.textContent = 'Дробилка листьев';
+    hint.textContent = 'Сушёные листья превращаем в дроблёные (3→2)';
+
+    const jobs = S.grindJobs.map(job=>{
+      const left = Math.max(0, job.finishAt - now());
+      const pct = 100 - Math.min(100, Math.floor(left/GRIND_TIME*100));
+      return `<div class="job"><div>
+                <div>Партия: ${job.amount} 🌿 → ${job.amount/GRIND_COST*GRIND_YIELD} 🫖</div>
+                <div class="bar"><div class="f" style="width:${pct}%"></div></div>
+                <div class="muted">${fmtTime(left)}</div>
+              </div>
+              <div style="text-align:right">${left<=0?'<button class="btn primary takeg" data-id="'+job.id+'">Забрать</button>':'…'}</div></div>`;
+    }).join('') || '<div class="muted">Очередь пустая</div>';
+
+    content.innerHTML = `
+      <div class="panel">
+        <h3>Запуск дробления</h3>
+        <div class="kv" style="flex-wrap:wrap;gap:10px">
+          <div class="pill">Стоимость: <b>${GRIND_COST}</b> 🌿 → <b>${GRIND_YIELD}</b> 🫖</div>
+          <div class="pill">Время: <b>${Math.round(GRIND_TIME/1000)}с</b></div>
+          <button class="btn primary" id="start-grind" ${S.inv.dry<GRIND_COST?'disabled':''}>Запустить партию</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Очередь</h3>
+        <div class="list" id="grind-list">${jobs}</div>
+      </div>`;
+
+    document.getElementById('start-grind').onclick = ()=>{
+      if(S.inv.dry<GRIND_COST) return;
+      S.inv.dry -= GRIND_COST;
+      S.grindJobs.push({ id: 'g'+Math.random().toString(36).slice(2,8), amount: GRIND_COST, finishAt: now()+GRIND_TIME });
+      save();
+      render();
+    };
+
+    content.querySelectorAll('.takeg').forEach(b=>{
+      b.onclick = ()=>{
+        const id = b.dataset.id;
+        const idx = S.grindJobs.findIndex(j=>j.id===id);
+        if(idx>=0 && S.grindJobs[idx].finishAt<=now()){
+          const batches = S.grindJobs[idx].amount/GRIND_COST;
+          S.inv.crush += batches*GRIND_YIELD;
+          S.grindJobs.splice(idx,1);
+          save();
+          render();
+        }
+      };
+    });
+  }
+
+  /* =====================
+     Scene: Ceremony (Brewing)
+  ======================*/
+  const BREW_COST = 1; // дроблёных за заваривание
+  const BREW_TIME = 9000; // 9 сек
+  const BREW_YIELD = 2; // чашек
+
+  function renderCeremony(){
+    sceneName.textContent = 'Чайная церемония';
+    hint.textContent = 'Выбери стиль и заварим чай (1🫖 → 2🍵)';
+
+    const jobs = S.brewJobs.map(job=>{
+      const left = Math.max(0, job.finishAt - now());
+      const pct = 100 - Math.min(100, Math.floor(left/BREW_TIME*100));
+      return `<div class="job"><div>
+                <div>Заваривание: стиль <b>${job.style}</b></div>
+                <div class="bar"><div class="f" style="width:${pct}%"></div></div>
+                <div class="muted">${fmtTime(left)}</div>
+              </div>
+              <div style="text-align:right">${left<=0?'<button class="btn primary takeb" data-id="'+job.id+'">Подать</button>':'…'}</div></div>`;
+    }).join('') || '<div class="muted">Чайник пуст 🙂</div>';
+
+    content.innerHTML = `
+      <div class="panel">
+        <h3>Подготовка</h3>
+        <div class="ceremony-stage">
+          <div class="teatable">
+            <div style="display:flex;align-items:center;gap:10px"><div class="pot">🫖</div><div>
+              <div class="pill" style="margin-bottom:8px">Стоимость: <b>${BREW_COST}</b> 🫖 → <b>${BREW_YIELD}</b> 🍵</div>
+              <div class="kv" style="gap:10px;flex-wrap:wrap">
+                <select id="style" class="btn">
+                  <option value="сенча">Сенча</option>
+                  <option value="улун">Улун</option>
+                  <option value="чёрный">Чёрный</option>
+                </select>
+                <button class="btn primary" id="start-brew" ${S.inv.crush<BREW_COST?'disabled':''}>Заварить</button>
+              </div>
+            </div></div>
+            <div class="steam">♨️</div>
+          </div>
+          <div class="panel">
+            <h3>Традиция</h3>
+            <div class="list">
+              <div>• Нагрей чайник и пиалы.</div>
+              <div>• Промой листья горячей водой.</div>
+              <div>• Короткие проливы — мягкий вкус ☺️</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Чайник</h3>
+        <div class="list" id="brew-list">${jobs}</div>
+      </div>`;
+
+    const steam = content.querySelector('.steam');
+    let steamTimer=null;
+    document.getElementById('start-brew').onclick = ()=>{
+      if(S.inv.crush<BREW_COST) return;
+      S.inv.crush -= BREW_COST;
+      const style = document.getElementById('style').value;
+      S.brewJobs.push({ id: 'b'+Math.random().toString(36).slice(2,8), style, finishAt: now()+BREW_TIME });
+      save();
+      render();
+      steam.style.opacity=1; clearTimeout(steamTimer); steamTimer=setTimeout(()=>steam.style.opacity=0, 3000);
+    };
+
+    content.querySelectorAll('.takeb').forEach(b=>{
+      b.onclick = ()=>{
+        const id = b.dataset.id;
+        const idx = S.brewJobs.findIndex(j=>j.id===id);
+        if(idx>=0 && S.brewJobs[idx].finishAt<=now()){
+          S.inv.cups += BREW_YIELD;
+          S.inv.harmony += 1; // чуть-чуть гармонии за каждую подачу
+          S.brewJobs.splice(idx,1);
+          save();
+          render();
+        }
+      };
+    });
+  }
+
+  /* =====================
+     UI Wiring
+  ======================*/
+  const invLeaf = document.getElementById('inv-leaf');
+  const invDry = document.getElementById('inv-dry');
+  const invCrush = document.getElementById('inv-crush');
+  const invCups = document.getElementById('inv-cups');
+  const invHarmony = document.getElementById('inv-harmony');
+
+  document.getElementById('nav-left').onclick = ()=> setScene(sceneIndex-1);
+  document.getElementById('nav-right').onclick = ()=> setScene(sceneIndex+1);
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='ArrowRight') setScene(sceneIndex+1);
+    if(e.key==='ArrowLeft') setScene(sceneIndex-1);
+  });
+
+  document.getElementById('btn-help').onclick = ()=>{
+    alert('Цель: пройти путь от листьев до чайной церемонии.\n\n→ Улица: собирай 🍃 с деревьев (кулдаун 15с).\n→ Сушка: 5 🍃 → 3 🌿 за ~12с.\n→ Дробилка: 3 🌿 → 2 🫖 за ~8с.\n→ Церемония: 1 🫖 → 2 🍵 за ~9с (и +1 гармонии).\n\nСохраняется в браузере. Удачи!');
+  };
+  document.getElementById('btn-reset').onclick = ()=>{
+    if(confirm('Сбросить прогресс?')){ S = structuredClone(def); save(); setScene(0); }
+  };
+
+  // small ticker for progress bars
+  setInterval(()=>{ render(); }, 500);
+
+  // Auto show first scene
+  setScene(0);
+})();
+</script>
+</body>
+</html>
